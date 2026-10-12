@@ -1,0 +1,19 @@
+name: "Install dependencies from build artifact"
+description: "Reuse wheels produced in the build job, without PyPI"
+
+inputs:
+  wheelhouse:
+    description: "Path to downloaded wheels"
+    required: false
+    default: "build-artifacts/wheelhouse"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install dependencies from wheelhouse
+      shell: bash
+      env:
+        WHEELHOUSE: ${{ inputs.wheelhouse }}
+      run: |
+        test -d "$WHEELHOUSE"
+        python -m pip install --no-index --find-links="$WHEELHOUSE" -r requirements.txt

@@ -1,15 +1,23 @@
-name: "Python CI setup"
-description: "Reusable setup of Python for all CI jobs"
+name: "Set up Python and cache pip"
+description: "Reusable Python configuration for CI jobs"
+
+inputs:
+  python-version:
+    description: "Required Python version"
+    required: false
+    default: "3.11"
 
 runs:
   using: "composite"
   steps:
-    - name: Install Python 3.11
+    - name: Prepare Python and enable pip cache
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: requirements.txt
 
-    - name: Show Python and pip versions
+    - name: Show Python version
       shell: bash
       run: |
         python --version

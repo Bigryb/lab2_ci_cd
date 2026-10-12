@@ -1,0 +1,197 @@
+name: Python CI (Intermediate)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build - prepare dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reusable Python setup with pip cache
+        uses: ./.github/actions/setup-python
+
+      - name: Install required packages
+        run: python -m pip install -r requirements.txt
+
+      - name: Prepare source files and wheelhouse
+        run: |
+          python -m compileall -q src/
+          mkdir -p build-artifacts/src
+          cp -R src/cicd_demo build-artifacts/src/
+          python -m pip wheel -r requirements.txt --wheel-dir build-artifacts/wheelhouse
+          python -m pip freeze > build-artifacts/installed-versions.txt
+          ls -lh build-artifacts/wheelhouse/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  lint:
+    name: Lint - flake8 and black
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reusable Python setup with pip cache
+        uses: ./.github/actions/setup-python
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts/
+
+      - name: Install dependencies from build
+        uses: ./.github/actions/install-offline
+
+      - name: Verify build artifact
+        run: |
+          test -f build-artifacts/src/cicd_demo/calculator.py
+          mkdir -p lint-results
+
+      - name: Check style with flake8
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m flake8 src/ tests/ 2>&1 | tee lint-results/flake8.txt
+          echo "flake8: passed" | tee -a lint-results/flake8.txt
+
+      - name: Check formatting with black
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m black --check src/ tests/ 2>&1 | tee lint-results/black.txt
+          echo "black --check: passed" | tee -a lint-results/black.txt
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-results
+          path: lint-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  test:
+    name: Test - pytest
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reusable Python setup with pip cache
+        uses: ./.github/actions/setup-python
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts/
+
+      - name: Download lint reports
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-results
+          path: lint-results/
+
+      - name: Install dependencies from build
+        uses: ./.github/actions/install-offline
+
+      - name: Check received build and lint artifacts
+        run: |
+          test -f build-artifacts/src/cicd_demo/calculator.py
+          test -f lint-results/flake8.txt
+          test -f lint-results/black.txt
+          grep -q "flake8: passed" lint-results/flake8.txt
+          grep -q "black --check: passed" lint-results/black.txt
+
+      - name: Run five pytest tests and create JUnit report
+        env:
+          PYTHONPATH: build-artifacts/src
+        run: |
+          mkdir -p test-results
+          python -m pytest tests/ -v --junitxml=test-results/report.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  package:
+    name: Package - create wheel
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reusable Python setup with pip cache
+        uses: ./.github/actions/setup-python
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts/
+
+      - name: Download lint reports
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-results
+          path: lint-results/
+
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+
+      - name: Install dependencies from build
+        uses: ./.github/actions/install-offline
+
+      - name: Verify artifacts from earlier jobs
+        run: |
+          test -f build-artifacts/src/cicd_demo/calculator.py
+          test -f lint-results/flake8.txt
+          test -f lint-results/black.txt
+          test -f test-results/report.xml
+
+      - name: Make wheel from transferred source
+        run: |
+          mkdir -p package-source/src
+          cp pyproject.toml package-source/
+          cp -R build-artifacts/src/cicd_demo package-source/src/
+          python -m build --wheel --no-isolation --outdir dist package-source
+          python -m pip install --no-deps dist/*.whl
+          python -c "from cicd_demo.calculator import add; assert add(2, 3) == 5"
+          ls -lh dist/
+
+      - name: Upload finished wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
