@@ -16,10 +16,13 @@ eggs/
 .eggs/
 lib/
 lib64/
+*.pyc
 parts/
 sdist/
 var/
 wheels/
+wheelhouse/
+build-output/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -71,6 +74,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+
 
 # PyBuilder
 .pybuilder/
@@ -218,3 +222,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+report.xml

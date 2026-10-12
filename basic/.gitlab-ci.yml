@@ -1,0 +1,73 @@
+
+stages:
+  - build
+  - test
+  - package
+
+# Общий шаблон для всех заданий
+.python-job:
+  image: python:3.11-slim
+  before_script:
+    - python -m venv .venv
+    - . .venv/bin/activate
+    - python --version
+    - python -m pip --version
+
+# Этап 1: установка зависимостей и подготовка файлов
+build:
+  extends: .python-job
+  stage: build
+  script:
+    - python -m pip install -r requirements.txt
+    - python -m pip wheel -r requirements.txt --wheel-dir wheelhouse
+    - python -m compileall -q src/
+    - mkdir -p build-output
+    - cp -R src/cicd_demo build-output/
+    - ls -lh wheelhouse/
+    - ls -R build-output/
+  artifacts:
+    paths:
+      - wheelhouse/
+      - build-output/
+    expire_in: 1 week
+
+# Этап 2: тестирование
+test:
+  extends: .python-job
+  stage: test
+  dependencies:
+    - build
+  script:
+    - test -f build-output/cicd_demo/calculator.py
+    - python -m pip install --no-index --find-links=wheelhouse -r requirements.txt
+    - PYTHONPATH="$CI_PROJECT_DIR/build-output" python -m pytest tests/ -v --junitxml=report.xml
+    - ls -lh report.xml
+  artifacts:
+    when: always
+    paths:
+      - wheelhouse/
+      - build-output/
+      - report.xml
+    reports:
+      junit: report.xml
+    expire_in: 1 week
+
+# Этап 3: создание wheel-пакета
+package:
+  extends: .python-job
+  stage: package
+  dependencies:
+    - test
+  script:
+    - test -f report.xml
+    - test -f build-output/cicd_demo/calculator.py
+    - python -m pip install --no-index --find-links=wheelhouse -r requirements.txt
+    - python -m build --wheel --no-isolation
+    - python -m pip install --no-deps dist/*.whl
+    - python -c "from cicd_demo.calculator import add; assert add(2, 3) == 5"
+    - ls -lh dist/
+  artifacts:
+    paths:
+      - dist/
+      - report.xml
+    expire_in: 1 week
