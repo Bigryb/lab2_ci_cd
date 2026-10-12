@@ -1,0 +1,16 @@
+name: "Python CI setup"
+description: "Reusable setup of Python for all CI jobs"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Show Python and pip versions
+      shell: bash
+      run: |
+        python --version
+        python -m pip --version

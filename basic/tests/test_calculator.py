@@ -1,4 +1,3 @@
-
 from cicd_demo.calculator import add, multiply
 
 
